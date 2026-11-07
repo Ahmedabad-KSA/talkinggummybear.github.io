@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Talking Gummy Bear 3D</title>
+    <!-- Tailwind CSS for UI overlay -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #bce3f7;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Top Bar Glossy Buttons matching Talking Gummy Bear UI */
+        .top-btn {
+            background: linear-gradient(135deg, #ff9d00 0%, #ff5500 100%);
+            border: 3px solid #ffe600;
+            border-radius: 18px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.3), inset 0 3px 5px rgba(255,255,255,0.7);
+            transition: transform 0.1s active, filter 0.2s;
+        }
+        .top-btn:active {
+            transform: scale(0.92);
+        }
+
+        /* Mic Button Styling */
+        .mic-btn-container {
+            position: relative;
+            width: 80px;
+            height: 80px;
+        }
+
+        .mic-visualizer-ring {
+            position: absolute;
+            inset: -8px;
+            border-radius: 50%;
+            border: 4px solid rgba(76, 230, 0, 0.6);
+            opacity: 0;
+            transition: transform 0.1s ease, opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        .mic-btn {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #5ce600 0%, #269900 100%);
+            border: 4px solid #ffffff;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.4), inset 0 3px 6px rgba(255,255,255,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 2.2rem;
+            cursor: pointer;
+        }
+
+        .mic-btn.recording {
+            background: linear-gradient(135deg, #ff2200 0%, #990000 100%);
+            animation: pulse-red 1s infinite alternate;
+        }
+
+        .mic-btn.speaking {
+            background: linear-gradient(135deg, #00d9ff 0%, #0055ff 100%);
+            animation: pulse-blue 0.5s infinite alternate;
+        }
+
+        @keyframes pulse-red {
+            0% { transform: scale(1); box-shadow: 0 0 10px #ff0000; }
+            100% { transform: scale(1.08); box-shadow: 0 0 22px #ff0000; }
+        }
+
+        @keyframes pulse-blue {
+            0% { transform: scale(1); box-shadow: 0 0 10px #00aaff; }
+            100% { transform: scale(1.08); box-shadow: 0 0 22px #00aaff; }
+        }
+
+        /* Speech Toast */
+        .speech-bubble {
+            position: absolute;
+            bottom: 110px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            border: 3px solid #333;
+            border-radius: 20px;
+            padding: 8px 20px;
+            font-weight: 800;
+            color: #222;
+            font-size: 16px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 20;
+            text-align: center;
+        }
+        .speech-bubble.show {
+            opacity: 1;
+        }
+
+        /* Camera Flash Effect */
+        #flash {
+            position: fixed;
+            inset: 0;
+            background: white;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 60;
+            transition: opacity 0.4s ease-out;
+        }
+
+        /* Disco Light Overlay */
+        #disco-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 2;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        .disco-active #disco-overlay {
+            opacity: 1;
+            animation: disco-flash 0.8s infinite alternate;
+        }
+
+        @keyframes disco-flash {
+            0% { background-color: rgba(255,0,80,0.2); }
+            33% { background-color: rgba(0,255,100,0.2); }
+            66% { background-color: rgba(0,150,255,0.2); }
+            100% { background-color: rgba(255,220,0,0.2); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Audio Start Overlay -->
+    <div id="audio-start-overlay" class="fixed inset-0 z-50 bg-black/70 flex flex-col items-center justify-center text-white p-6 text-center cursor-pointer">
+        <div class="bg-yellow-400 border-4 border-orange-500 text-orange-950 p-6 rounded-3xl max-w-sm shadow-2xl animate-bounce mb-4">
+            <i class="fa-solid fa-play text-5xl mb-2 text-orange-600"></i>
+            <h1 class="text-3xl font-black">TALKING GUMMY BEAR</h1>
+            <p class="font-bold mt-2">Tap Anywhere to Play & Enable Mic Voice Repeat!</p>
+        </div>
+    </div>
+
+    <div id="flash"></div>
+    <div id="disco-overlay"></div>
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay -->
+    <div class="relative z-10 w-full h-full flex flex-col justify-between p-4 pointer-events-none">
+        
+        <!-- Top Menu Bar matching screenshot -->
+        <div class="flex justify-between items-center w-full max-w-md mx-auto space-x-2 pointer-events-auto">
+            <button id="btn-camera" class="top-btn w-14 h-14 md:w-16 md:h-16 flex items-center justify-center text-white text-2xl md:text-3xl" title="Take Photo">
+                <i class="fa-solid fa-camera"></i>
+            </button>
+            <button id="btn-dance" class="top-btn w-14 h-14 md:w-16 md:h-16 flex items-center justify-center text-white text-2xl md:text-3xl" title="Dance Song">
+                <i class="fa-solid fa-music"></i>
+            </button>
+            <button id="btn-disco" class="top-btn w-14 h-14 md:w-16 md:h-16 flex items-center justify-center text-white text-2xl md:text-3xl" title="Disco Party">
+                <i class="fa-solid fa-compact-disc"></i>
+            </button>
+            <button id="btn-minigame" class="top-btn w-14 h-14 md:w-16 md:h-16 flex items-center justify-center text-white text-2xl md:text-3xl" title="Arcade Game">
+                <i class="fa-solid fa-gamepad"></i>
+            </button>
+            <button id="btn-feed" class="top-btn w-14 h-14 md:w-16 md:h-16 flex flex-col items-center justify-center text-white font-black text-xs" title="Feed Gummy Bear">
+                <i class="fa-solid fa-utensils text-lg mb-0.5"></i>
+                <span>FEED</span>
+            </button>
+        </div>
+
+        <!-- Speech Toast -->
+        <div id="speech-bubble" class="speech-bubble">Listening... Speak now!</div>
+
+        <!-- Bottom Mic Toggle Button -->
+        <div class="flex justify-end w-full max-w-md mx-auto p-2 pointer-events-auto">
+            <div class="mic-btn-container">
+                <div id="mic-ring" class="mic-visualizer-ring"></div>
+                <button id="btn-mic" class="mic-btn">
+                    <i class="fa-solid fa-microphone" id="mic-icon"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feeding Items Modal -->
+    <div id="feed-panel" class="fixed inset-0 bg-black/60 z-40 flex items-center justify-center hidden pointer-events-auto">
+        <div class="bg-yellow-400 border-4 border-orange-500 rounded-3xl p-6 max-w-xs w-11/12 text-center shadow-2xl relative">
+            <button id="close-feed" class="absolute -top-3 -right-3 bg-red-600 text-white rounded-full w-9 h-9 font-bold text-lg border-2 border-white shadow">X</button>
+            <h2 class="text-2xl font-black text-orange-950 mb-4">FEED GUMMY BEAR</h2>
+            <div class="grid grid-cols-2 gap-4 text-3xl">
+                <button onclick="feedGummy('apple')" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-2xl shadow border-b-4 border-emerald-700 active:translate-y-1">🍎 Apple</button>
+                <button onclick="feedGummy('donut')" class="bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-2xl shadow border-b-4 border-pink-700 active:translate-y-1">🍩 Donut</button>
+                <button onclick="feedGummy('pizza')" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-2xl shadow border-b-4 border-amber-700 active:translate-y-1">🍕 Pizza</button>
+                <button onclick="feedGummy('soda')" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-2xl shadow border-b-4 border-blue-700 active:translate-y-1">🥤 Soda</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mini Arcade Game Modal -->
+    <div id="minigame-panel" class="fixed inset-0 bg-black/80 z-40 flex items-center justify-center hidden pointer-events-auto">
+        <div class="bg-slate-900 border-4 border-yellow-400 rounded-3xl p-4 max-w-sm w-11/12 text-center shadow-2xl relative flex flex-col items-center">
+            <button id="close-minigame" class="absolute -top-3 -right-3 bg-red-600 text-white rounded-full w-9 h-9 font-bold text-lg border-2 border-white shadow">X</button>
+            <h2 class="text-xl font-black text-yellow-400 mb-2">GUMMY JUMP ARCADE</h2>
+            <canvas id="arcade-canvas" width="280" height="380" class="bg-slate-800 rounded-xl border-2 border-slate-700"></canvas>
+            <p class="text-xs text-slate-300 mt-2 font-bold">Tap Left/Right to Jump Platforms!</p>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. AUDIO ENGINE (SYNTH SFX & VOICE REPEAT) ---
+        class AudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.isRecording = false;
+                this.isPlayingBack = false;
+                this.mediaRecorder = null;
+                this.audioChunks = [];
+                this.micStream = null;
+                this.analyser = null;
+                this.dataArray = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playSFX(type) {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                if (type === 'giggle') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(650, now);
+                    osc.frequency.exponentialRampToValueAtTime(1300, now + 0.1);
+                    osc.frequency.exponentialRampToValueAtTime(850, now + 0.2);
+                    osc.frequency.exponentialRampToValueAtTime(1500, now + 0.35);
+                    gain.gain.setValueAtTime(0.35, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.38);
+                    osc.start(now);
+                    osc.stop(now + 0.38);
+                } else if (type === 'poke') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(320, now);
+                    osc.frequency.exponentialRampToValueAtTime(160, now + 0.15);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
+                } else if (type === 'boing') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(180, now);
+                    osc.frequency.linearRampToValueAtTime(700, now + 0.3);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.35);
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+                } else if (type === 'shutter') {
+                    // Camera shutter sound
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(800, now);
+                    osc.frequency.exponentialRampToValueAtTime(100, now + 0.08);
+                    gain.gain.setValueAtTime(0.5, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.09);
+                    osc.start(now);
+                    osc.stop(now + 0.09);
+                } else if (type === 'crunch') {
+                    // Eating crunch sound
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(250, now);
+                    osc.frequency.exponentialRampToValueAtTime(80, now + 0.15);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
+                }
+            }
+
+            // High Pitch Talking Gummy Voice Repeat System
+            async startVoiceRecording(onStart, onSpeechLevel, onEndSpeech) {
+                this.init();
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    alert("Microphone access is not supported on this browser.");
+                    return;
+                }
+
+                try {
+                    this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    
+                    // Audio Analyser for Visualizer Ring
+                    const source = this.ctx.createMediaStreamSource(this.micStream);
+                    this.analyser = this.ctx.createAnalyser();
+                    this.analyser.fftSize = 64;
+                    source.connect(this.analyser);
+                    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+
+                    this.mediaRecorder = new MediaRecorder(this.micStream);
+                    this.audioChunks = [];
+
+                    this.mediaRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) this.audioChunks.push(e.data);
+                    };
+
+                    this.mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+                        const arrayBuffer = await audioBlob.arrayBuffer();
+                        const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+                        this.playPitchShiftedAudio(audioBuffer, 1.45, onEndSpeech);
+                    };
+
+                    this.mediaRecorder.start();
+                    this.isRecording = true;
+                    if (onStart) onStart();
+
+                    // Level Monitor Loop
+                    const monitor = () => {
+                        if (this.isRecording && this.analyser) {
+                            this.analyser.getByteFrequencyData(this.dataArray);
+                            let sum = 0;
+                            for (let i = 0; i < this.dataArray.length; i++) sum += this.dataArray[i];
+                            const avg = sum / this.dataArray.length;
+                            if (onSpeechLevel) onSpeechLevel(avg / 255);
+                            requestAnimationFrame(monitor);
+                        }
+                    };
+                    monitor();
+
+                    // Automatic silence/max recording stop (4 sec)
+                    setTimeout(() => {
+                        if (this.isRecording) {
+                            this.stopVoiceRecording();
+                        }
+                    }, 4000);
+
+                } catch (err) {
+                    console.error("Mic access denied or error:", err);
+                    alert("Please allow microphone access to talk to Gummy Bear!");
+                }
+            }
+
+            stopVoiceRecording() {
+                if (this.mediaRecorder && this.isRecording) {
+                    this.isRecording = false;
+                    this.mediaRecorder.stop();
+                    if (this.micStream) {
+                        this.micStream.getTracks().forEach(track => track.stop());
+                    }
+                }
+            }
+
+            playPitchShiftedAudio(buffer, pitchRatio, onFinished) {
+                this.isPlayingBack = true;
+                const source = this.ctx.createBufferSource();
+                source.buffer = buffer;
+                source.playbackRate.value = pitchRatio;
+                source.connect(this.ctx.destination);
+                
+                const duration = buffer.duration / pitchRatio;
+                const startTime = this.ctx.currentTime;
+                
+                const lipSyncInterval = setInterval(() => {
+                    const elapsed = this.ctx.currentTime - startTime;
+                    if (elapsed >= duration) {
+                        clearInterval(lipSyncInterval);
+                        this.isPlayingBack = false;
+                        if (onFinished) onFinished();
+                    } else {
+                        if (window.gummyBear) {
+                            window.gummyBear.setMouthOpen(Math.random() * 0.8 + 0.2);
+                        }
+                    }
+                }, 70);
+
+                source.start(0);
+            }
+
+            // Synthesized Dance Beat Song
+            playDanceMusic(durationSec, onComplete) {
+                this.init();
+                let step = 0;
+                const bpm = 135;
+                const interval = (60 / bpm) * 1000 / 2;
+                
+                const timer = setInterval(() => {
+                    if (step * (interval / 1000) >= durationSec) {
+                        clearInterval(timer);
+                        if (onComplete) onComplete();
+                        return;
+                    }
+
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    if (step % 2 === 0) {
+                        osc.frequency.setValueAtTime(160, now);
+                        osc.frequency.exponentialRampToValueAtTime(35, now + 0.1);
+                        gain.gain.setValueAtTime(0.5, now);
+                        gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
+                    } else {
+                        osc.type = 'square';
+                        osc.frequency.setValueAtTime(500 + (step % 4) * 120, now);
+                        gain.gain.setValueAtTime(0.2, now);
+                        gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
+                    }
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+
+                    step++;
+                }, interval);
+            }
+        }
+
+        const audio = new AudioEngine();
+
+        // Overlay user gesture enabler
+        document.getElementById('audio-start-overlay').addEventListener('click', () => {
+            audio.init();
+            document.getElementById('audio-start-overlay').style.display = 'none';
+        });
+
+
+        // --- 2. THREE.JS 3D SCENE & GUMMY BEAR MODEL ---
+        class GummyBearScene {
+            constructor(container) {
+                this.container = container;
+                this.scene = new THREE.Scene();
+                this.camera = null;
+                this.renderer = null;
+                
+                this.bearGroup = new THREE.Group();
+                this.headGroup = new THREE.Group();
+                this.leftArmGroup = new THREE.Group();
+                this.rightArmGroup = new THREE.Group();
+                this.leftLegGroup = new THREE.Group();
+                this.rightLegGroup = new THREE.Group();
+                this.mouthMesh = null;
+                this.leftEyeMesh = null;
+                this.rightEyeMesh = null;
+                this.pupilLeft = null;
+                this.pupilRight = null;
+
+                this.animState = 'idle';
+                this.animTime = 0;
+                this.blinkTimer = 0;
+
+                this.init();
+            }
+
+            init() {
+                this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+                this.camera.position.set(0, 1.15, 5.2);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                this.container.appendChild(this.renderer.domElement);
+
+                // Lighting Setup
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+                this.scene.add(ambientLight);
+
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+                dirLight.position.set(3, 8, 5);
+                dirLight.castShadow = true;
+                dirLight.shadow.mapSize.width = 1024;
+                dirLight.shadow.mapSize.height = 1024;
+                this.scene.add(dirLight);
+
+                const rimLight = new THREE.DirectionalLight(0x77ffff, 0.5);
+                rimLight.position.set(-3, 3, -4);
+                this.scene.add(rimLight);
+
+                this.scene.background = new THREE.Color(0xbce3f7);
+
+                this.buildGroundStar();
+                this.buildGummyBear();
+
+                this.raycaster = new THREE.Raycaster();
+                this.mouse = new THREE.Vector2();
+
+                window.addEventListener('resize', () => this.onWindowResize());
+                this.container.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+                window.addEventListener('pointermove', (e) => this.onPointerMove(e));
+
+                this.animate();
+            }
+
+            // Yellow 8-point starburst on blue circular base floor matching screenshot
+            buildGroundStar() {
+                const floorGroup = new THREE.Group();
+
+                const baseGeo = new THREE.CylinderGeometry(2.3, 2.3, 0.05, 32);
+                const baseMat = new THREE.MeshStandardMaterial({ color: 0x1e50a2, roughness: 0.4 });
+                const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+                baseMesh.receiveShadow = true;
+                floorGroup.add(baseMesh);
+
+                const starShape = new THREE.Shape();
+                const points = 8;
+                const outerRadius = 2.5;
+                const innerRadius = 0.85;
+
+                for (let i = 0; i < points * 2; i++) {
+                    const r = (i % 2 === 0) ? outerRadius : innerRadius;
+                    const a = (i / (points * 2)) * Math.PI * 2;
+                    const x = Math.cos(a) * r;
+                    const y = Math.sin(a) * r;
+                    if (i === 0) starShape.moveTo(x, y);
+                    else starShape.lineTo(x, y);
+                }
+                starShape.closePath();
+
+                const extrudeSettings = { depth: 0.02, bevelEnabled: false };
+                const starGeo = new THREE.ExtrudeGeometry(starShape, extrudeSettings);
+                starGeo.rotateX(Math.PI / 2);
+                const starMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 });
+                const starMesh = new THREE.Mesh(starGeo, starMat);
+                starMesh.position.y = 0.02;
+                starMesh.receiveShadow = true;
+                floorGroup.add(starMesh);
+
+                const centerGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.06, 32);
+                const centerMat = new THREE.MeshStandardMaterial({ color: 0x990000 });
+                const centerMesh = new THREE.Mesh(centerGeo, centerMat);
+                centerMesh.position.y = 0.03;
+                floorGroup.add(centerMesh);
+
+                floorGroup.position.y = -1.2;
+                this.scene.add(floorGroup);
+            }
+
+            buildGummyBear() {
+                const gummyMaterial = new THREE.MeshPhysicalMaterial({
+                    color: 0x5ce619,
+                    emissive: 0x114400,
+                    roughness: 0.15,
+                    metalness: 0.05,
+                    transmission: 0.3,
+                    thickness: 0.8,
+                    clearcoat: 1.0,
+                    clearcoatRoughness: 0.1,
+                    reflectivity: 0.9
+                });
+
+                // Torso & Belly
+                const bodyGeo = new THREE.SphereGeometry(0.85, 32, 32);
+                bodyGeo.scale(1.0, 1.1, 0.9);
+                const bodyMesh = new THREE.Mesh(bodyGeo, gummyMaterial);
+                bodyMesh.castShadow = true;
+                bodyMesh.name = "belly";
+                this.bearGroup.add(bodyMesh);
+
+                // Belly button
+                const navelGeo = new THREE.TorusGeometry(0.04, 0.015, 8, 16);
+                const navelMat = new THREE.MeshBasicMaterial({ color: 0x228b22 });
+                const navel = new THREE.Mesh(navelGeo, navelMat);
+                navel.position.set(0, -0.1, 0.77);
+                navel.rotation.x = Math.PI / 6;
+                this.bearGroup.add(navel);
+
+                // Head
+                this.headGroup.position.set(0, 1.05, 0);
+
+                const headGeo = new THREE.SphereGeometry(0.78, 32, 32);
+                headGeo.scale(1.15, 0.95, 1.0);
+                const headMesh = new THREE.Mesh(headGeo, gummyMaterial);
+                headMesh.castShadow = true;
+                headMesh.name = "head";
+                this.headGroup.add(headMesh);
+
+                // Right Ear
+                const earGeo = new THREE.SphereGeometry(0.25, 16, 16);
+                earGeo.scale(1.0, 1.1, 0.5);
+                const rightEar = new THREE.Mesh(earGeo, gummyMaterial);
+                rightEar.position.set(0.65, 0.65, 0);
+                this.headGroup.add(rightEar);
+
+                // Left Ear with Bite Cutout
+                const leftEarGroup = new THREE.Group();
+                const leftEarMesh = new THREE.Mesh(earGeo, gummyMaterial);
+                leftEarGroup.add(leftEarMesh);
+
+                const biteGeo = new THREE.SphereGeometry(0.12, 12, 12);
+                const biteMat = new THREE.MeshBasicMaterial({ color: 0xbce3f7 });
+                const biteMesh = new THREE.Mesh(biteGeo, biteMat);
+                biteMesh.position.set(-0.15, 0.1, 0);
+                leftEarGroup.add(biteMesh);
+                leftEarGroup.position.set(-0.65, 0.65, 0);
+                this.headGroup.add(leftEarGroup);
+
+                // Big Cartoon Eyes
+                const eyeWhiteGeo = new THREE.SphereGeometry(0.22, 20, 20);
+                eyeWhiteGeo.scale(1, 1.1, 0.5);
+                const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+
+                const irisGeo = new THREE.SphereGeometry(0.12, 16, 16);
+                irisGeo.scale(1, 1, 0.3);
+                const irisMat = new THREE.MeshStandardMaterial({ color: 0x0088ff, roughness: 0.1 });
+
+                const pupilGeo = new THREE.SphereGeometry(0.06, 12, 12);
+                pupilGeo.scale(1, 1, 0.3);
+                const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+                // Left Eye
+                this.leftEyeMesh = new THREE.Group();
+                const lWhite = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+                const lIris = new THREE.Mesh(irisGeo, irisMat);
+                lIris.position.set(0, 0, 0.16);
+                this.pupilLeft = new THREE.Mesh(pupilGeo, pupilMat);
+                this.pupilLeft.position.set(0, 0, 0.19);
+                this.leftEyeMesh.add(lWhite, lIris, this.pupilLeft);
+                this.leftEyeMesh.position.set(-0.25, 0.15, 0.65);
+                this.leftEyeMesh.name = "head";
+                this.headGroup.add(this.leftEyeMesh);
+
+                // Right Eye
+                this.rightEyeMesh = new THREE.Group();
+                const rWhite = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+                const rIris = new THREE.Mesh(irisGeo, irisMat);
+                rIris.position.set(0, 0, 0.16);
+                this.pupilRight = new THREE.Mesh(pupilGeo, pupilMat);
+                this.pupilRight.position.set(0, 0, 0.19);
+                this.rightEyeMesh.add(rWhite, rIris, this.pupilRight);
+                this.rightEyeMesh.position.set(0.25, 0.15, 0.65);
+                this.rightEyeMesh.name = "head";
+                this.headGroup.add(this.rightEyeMesh);
+
+                // Black Nose
+                const noseGeo = new THREE.SphereGeometry(0.09, 16, 16);
+                noseGeo.scale(1.2, 0.9, 0.8);
+                const noseMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
+                const nose = new THREE.Mesh(noseGeo, noseMat);
+                nose.position.set(0, -0.05, 0.78);
+                this.headGroup.add(nose);
+
+                // Mouth Curve
+                const mouthGeo = new THREE.TorusGeometry(0.2, 0.035, 12, 20, Math.PI);
+                const mouthMat = new THREE.MeshBasicMaterial({ color: 0x1a4000 });
+                this.mouthMesh = new THREE.Mesh(mouthGeo, mouthMat);
+                this.mouthMesh.position.set(0, -0.22, 0.72);
+                this.mouthMesh.rotation.x = Math.PI;
+                this.headGroup.add(this.mouthMesh);
+
+                this.bearGroup.add(this.headGroup);
+
+                // Shorts (Orange with White Trim)
+                const shortsGeo = new THREE.CylinderGeometry(0.87, 0.8, 0.45, 32);
+                const shortsMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 });
+                const shorts = new THREE.Mesh(shortsGeo, shortsMat);
+                shorts.position.set(0, -0.55, 0);
+
+                const trimGeo = new THREE.CylinderGeometry(0.89, 0.88, 0.08, 32);
+                const trimMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                const trim = new THREE.Mesh(trimGeo, trimMat);
+                trim.position.set(0, 0.18, 0);
+                shorts.add(trim);
+
+                const frontStripeGeo = new THREE.BoxGeometry(0.1, 0.45, 0.05);
+                const frontStripe = new THREE.Mesh(frontStripeGeo, trimMat);
+                frontStripe.position.set(0, 0, 0.86);
+                shorts.add(frontStripe);
+
+                this.bearGroup.add(shorts);
+
+                // Arms
+                const armGeo = new THREE.CylinderGeometry(0.18, 0.14, 0.7, 16);
+                armGeo.translate(0, -0.35, 0);
+
+                const leftArmMesh = new THREE.Mesh(armGeo, gummyMaterial);
+                leftArmMesh.name = "arm";
+                this.leftArmGroup.add(leftArmMesh);
+                this.leftArmGroup.position.set(-0.85, 0.2, 0);
+                this.leftArmGroup.rotation.z = Math.PI / 6;
+                this.bearGroup.add(this.leftArmGroup);
+
+                const rightArmMesh = new THREE.Mesh(armGeo, gummyMaterial);
+                rightArmMesh.name = "arm";
+                this.rightArmGroup.add(rightArmMesh);
+                this.rightArmGroup.position.set(0.85, 0.2, 0);
+                this.rightArmGroup.rotation.z = -Math.PI / 6;
+                this.bearGroup.add(this.rightArmGroup);
+
+                // Legs & Shoes
+                const legGeo = new THREE.CylinderGeometry(0.2, 0.18, 0.5, 16);
+                legGeo.translate(0, -0.25, 0);
+
+                const leftLegMesh = new THREE.Mesh(legGeo, gummyMaterial);
+                this.leftLegGroup.add(leftLegMesh);
+                this.leftLegGroup.position.set(-0.4, -0.75, 0);
+
+                const rightLegMesh = new THREE.Mesh(legGeo, gummyMaterial);
+                this.rightLegGroup.add(rightLegMesh);
+                this.rightLegGroup.position.set(0.4, -0.75, 0);
+
+                const sneakerGeo = new THREE.BoxGeometry(0.36, 0.28, 0.58);
+                const sneakerMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 });
+                const goldTrimGeo = new THREE.BoxGeometry(0.38, 0.08, 0.35);
+                const goldMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.2, metalness: 0.6 });
+
+                const lSneaker = new THREE.Mesh(sneakerGeo, sneakerMat);
+                lSneaker.position.set(0, -0.45, 0.1);
+                lSneaker.name = "feet";
+                const lGold = new THREE.Mesh(goldTrimGeo, goldMat);
+                lGold.position.set(0, 0.05, -0.08);
+                lSneaker.add(lGold);
+                this.leftLegGroup.add(lSneaker);
+
+                const rSneaker = new THREE.Mesh(sneakerGeo, sneakerMat);
+                rSneaker.position.set(0, -0.45, 0.1);
+                rSneaker.name = "feet";
+                const rGold = new THREE.Mesh(goldTrimGeo, goldMat);
+                rGold.position.set(0, 0.05, -0.08);
+                rSneaker.add(rGold);
+                this.rightLegGroup.add(rSneaker);
+
+                this.bearGroup.add(this.leftLegGroup);
+                this.bearGroup.add(this.rightLegGroup);
+
+                this.bearGroup.position.y = -0.2;
+                this.scene.add(this.bearGroup);
+            }
+
+            setMouthOpen(amount) {
+                if (this.mouthMesh) {
+                    this.mouthMesh.scale.set(1 + amount * 0.5, 1 + amount * 1.5, 1);
+                }
+            }
+
+            triggerAnimation(animName) {
+                this.animState = animName;
+                this.animTime = 0;
+            }
+
+            onPointerMove(event) {
+                // Pupil eye-tracking cursor
+                const mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                const mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+
+                if (this.pupilLeft && this.pupilRight) {
+                    this.pupilLeft.position.x = THREE.MathUtils.clamp(mouseX * 0.05, -0.04, 0.04);
+                    this.pupilLeft.position.y = THREE.MathUtils.clamp(mouseY * 0.05, -0.04, 0.04);
+                    this.pupilRight.position.x = THREE.MathUtils.clamp(mouseX * 0.05, -0.04, 0.04);
+                    this.pupilRight.position.y = THREE.MathUtils.clamp(mouseY * 0.05, -0.04, 0.04);
+                }
+            }
+
+            onPointerDown(event) {
+                this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                const intersects = this.raycaster.intersectObjects(this.bearGroup.children, true);
+
+                if (intersects.length > 0) {
+                    let hitObj = intersects[0].object;
+                    while (hitObj && !hitObj.name && hitObj.parent) {
+                        hitObj = hitObj.parent;
+                    }
+                    const name = hitObj ? hitObj.name : '';
+
+                    if (name === 'head') {
+                        audio.playSFX('poke');
+                        this.triggerAnimation('pokeHead');
+                    } else if (name === 'belly') {
+                        audio.playSFX('giggle');
+                        this.triggerAnimation('giggle');
+                    } else if (name === 'feet') {
+                        audio.playSFX('boing');
+                        this.triggerAnimation('pokeFeet');
+                    } else if (name === 'arm') {
+                        audio.playSFX('boing');
+                        this.triggerAnimation('wave');
+                    } else {
+                        audio.playSFX('poke');
+                        this.triggerAnimation('pokeHead');
+                    }
+                }
+            }
+
+            onWindowResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+
+                this.animTime += 0.03;
+                this.blinkTimer += 0.02;
+
+                // Eye Blinking
+                if (Math.sin(this.blinkTimer) > 0.97) {
+                    this.leftEyeMesh.scale.y = 0.1;
+                    this.rightEyeMesh.scale.y = 0.1;
+                } else {
+                    this.leftEyeMesh.scale.y = 1.0;
+                    this.rightEyeMesh.scale.y = 1.0;
+                }
+
+                // Mouth Rest
+                if (!audio.isPlayingBack && this.mouthMesh) {
+                    this.mouthMesh.scale.lerp(new THREE.Vector3(1, 1, 1), 0.2);
+                }
+
+                // ANIMATION STATES
+                if (this.animState === 'idle') {
+                    this.bearGroup.position.y = -0.2 + Math.sin(this.animTime * 2) * 0.03;
+                    this.headGroup.rotation.z = Math.sin(this.animTime * 1.5) * 0.04;
+                    this.leftArmGroup.rotation.z = Math.PI / 6 + Math.sin(this.animTime * 2) * 0.05;
+                    this.rightArmGroup.rotation.z = -Math.PI / 6 - Math.sin(this.animTime * 2) * 0.05;
+                    this.leftLegGroup.rotation.x = 0;
+                    this.rightLegGroup.rotation.x = 0;
+                    this.bearGroup.rotation.y = THREE.MathUtils.lerp(this.bearGroup.rotation.y, 0, 0.1);
+
+                } else if (this.animState === 'pokeHead') {
+                    this.headGroup.rotation.y = Math.sin(this.animTime * 20) * 0.35;
+                    this.headGroup.rotation.z = Math.cos(this.animTime * 15) * 0.2;
+                    if (this.animTime > 1.2) this.animState = 'idle';
+
+                } else if (this.animState === 'giggle') {
+                    this.bearGroup.position.y = -0.2 + Math.abs(Math.sin(this.animTime * 15)) * 0.12;
+                    this.leftArmGroup.rotation.z = Math.PI / 3 + Math.sin(this.animTime * 20) * 0.2;
+                    this.rightArmGroup.rotation.z = -Math.PI / 3 - Math.sin(this.animTime * 20) * 0.2;
+                    if (this.animTime > 1.5) this.animState = 'idle';
+
+                } else if (this.animState === 'pokeFeet') {
+                    this.leftLegGroup.rotation.x = Math.sin(this.animTime * 15) * 0.5;
+                    this.rightLegGroup.rotation.x = -Math.sin(this.animTime * 15) * 0.5;
+                    this.bearGroup.position.y = -0.2 + Math.abs(Math.sin(this.animTime * 15)) * 0.08;
+                    if (this.animTime > 1.4) this.animState = 'idle';
+
+                } else if (this.animState === 'wave') {
+                    this.rightArmGroup.rotation.z = -Math.PI / 2 + Math.sin(this.animTime * 15) * 0.4;
+                    if (this.animTime > 1.5) this.animState = 'idle';
+
+                } else if (this.animState === 'eating') {
+                    this.headGroup.rotation.x = Math.sin(this.animTime * 12) * 0.15;
+                    this.setMouthOpen(Math.abs(Math.sin(this.animTime * 10)));
+                    if (this.animTime > 2.0) this.animState = 'idle';
+
+                } else if (this.animState === 'dance') {
+                    this.bearGroup.position.y = -0.2 + Math.abs(Math.sin(this.animTime * 10)) * 0.18;
+                    this.bearGroup.rotation.y = Math.sin(this.animTime * 4) * 0.6;
+                    this.leftArmGroup.rotation.x = Math.sin(this.animTime * 10) * 0.8;
+                    this.rightArmGroup.rotation.x = -Math.sin(this.animTime * 10) * 0.8;
+                    this.leftLegGroup.rotation.x = -Math.sin(this.animTime * 10) * 0.4;
+                    this.rightLegGroup.rotation.x = Math.sin(this.animTime * 10) * 0.4;
+                }
+
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        // Initialize 3D Scene
+        let gameScene;
+        window.addEventListener('load', () => {
+            const container = document.getElementById('canvas-container');
+            gameScene = new GummyBearScene(container);
+            window.gummyBear = gameScene;
+        });
+
+
+        // --- 3. CONTROLLERS & BUTTON BINDINGS ---
+        const btnMic = document.getElementById('btn-mic');
+        const micIcon = document.getElementById('mic-icon');
+        const micRing = document.getElementById('mic-ring');
+        const speechBubble = document.getElementById('speech-bubble');
+
+        btnMic.addEventListener('click', () => {
+            if (audio.isRecording) {
+                audio.stopVoiceRecording();
+            } else {
+                speechBubble.innerText = "Listening... Speak now!";
+                speechBubble.classList.add('show');
+                btnMic.classList.add('recording');
+
+                audio.startVoiceRecording(
+                    () => { micIcon.className = "fa-solid fa-stop"; },
+                    (level) => {
+                        micRing.style.opacity = '1';
+                        micRing.style.transform = `scale(${1 + level * 0.5})`;
+                    },
+                    () => {
+                        btnMic.classList.remove('recording', 'speaking');
+                        micRing.style.opacity = '0';
+                        micIcon.className = "fa-solid fa-microphone";
+                        speechBubble.classList.remove('show');
+                    }
+                );
+            }
+        });
+
+        // Top Menu 1: Snapshot Photo Download
+        document.getElementById('btn-camera').addEventListener('click', () => {
+            const flash = document.getElementById('flash');
+            flash.style.opacity = '1';
+            audio.playSFX('shutter');
+
+            setTimeout(() => { flash.style.opacity = '0'; }, 300);
+
+            setTimeout(() => {
+                const webglCanvas = document.querySelector('canvas');
+                if (webglCanvas) {
+                    const dataURL = webglCanvas.toDataURL('image/png');
+                    const link = document.createElement('a');
+                    link.download = 'gummy_bear_photo.png';
+                    link.href = dataURL;
+                    link.click();
+                }
+            }, 350);
+        });
+
+        // Top Menu 2: Dance Party Mode
+        let isDancing = false;
+        document.getElementById('btn-dance').addEventListener('click', () => {
+            if (isDancing) return;
+            isDancing = true;
+            gameScene.triggerAnimation('dance');
+
+            audio.playDanceMusic(6.0, () => {
+                isDancing = false;
+                gameScene.triggerAnimation('idle');
+            });
+        });
+
+        // Top Menu 3: Disco Mode Strobe Lights
+        document.getElementById('btn-disco').addEventListener('click', () => {
+            document.body.classList.toggle('disco-active');
+            audio.playSFX('boing');
+            gameScene.triggerAnimation('dance');
+            setTimeout(() => {
+                document.body.classList.remove('disco-active');
+                gameScene.triggerAnimation('idle');
+            }, 5000);
+        });
+
+        // Top Menu 4: Feeding Modal
+        const feedPanel = document.getElementById('feed-panel');
+        document.getElementById('btn-feed').addEventListener('click', () => {
+            feedPanel.classList.remove('hidden');
+        });
+        document.getElementById('close-feed').addEventListener('click', () => {
+            feedPanel.classList.add('hidden');
+        });
+
+        function feedGummy(item) {
+            feedPanel.classList.add('hidden');
+            audio.playSFX('crunch');
+            gameScene.triggerAnimation('eating');
+            speechBubble.innerText = `Yum! Tastes like ${item}! 😋`;
+            speechBubble.classList.add('show');
+            setTimeout(() => speechBubble.classList.remove('show'), 2000);
+        }
+
+        // Top Menu 5: Arcade Minigame Popup
+        const minigamePanel = document.getElementById('minigame-panel');
+        document.getElementById('btn-minigame').addEventListener('click', () => {
+            minigamePanel.classList.remove('hidden');
+            startArcadeGame();
+        });
+        document.getElementById('close-minigame').addEventListener('click', () => {
+            minigamePanel.classList.add('hidden');
+        });
+
+        // --- 4. RETRO ARCADE MINIGAME (GUMMY JUMP) ---
+        function startArcadeGame() {
+            const canvas = document.getElementById('arcade-canvas');
+            const ctx = canvas.getContext('2d');
+            let player = { x: 120, y: 300, vx: 0, vy: -8, radius: 12 };
+            let platforms = [
+                { x: 100, y: 350, w: 80 },
+                { x: 40, y: 260, w: 80 },
+                { x: 160, y: 170, w: 80 },
+                { x: 80, y: 80, w: 80 }
+            ];
+            let score = 0;
+            let active = true;
+
+            function gameLoop() {
+                if (!active || minigamePanel.classList.contains('hidden')) return;
+
+                // Physics update
+                player.vy += 0.35;
+                player.x += player.vx;
+                player.y += player.vy;
+
+                // Wrap around edges
+                if (player.x < 0) player.x = canvas.width;
+                if (player.x > canvas.width) player.x = 0;
+
+                // Platform collisions
+                platforms.forEach(p => {
+                    if (player.vy > 0 && 
+                        player.x > p.x && player.x < p.x + p.w &&
+                        player.y + player.radius >= p.y && player.y + player.radius <= p.y + 12) {
+                        player.vy = -9;
+                        audio.playSFX('boing');
+                    }
+                });
+
+                // Camera scroll
+                if (player.y < 180) {
+                    const diff = 180 - player.y;
+                    player.y = 180;
+                    score += Math.floor(diff);
+                    platforms.forEach(p => {
+                        p.y += diff;
+                        if (p.y > canvas.height) {
+                            p.y = 0;
+                            p.x = Math.random() * (canvas.width - p.w);
+                        }
+                    });
+                }
+
+                // Render Canvas Frame
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Draw Platforms
+                ctx.fillStyle = '#facc15';
+                platforms.forEach(p => {
+                    ctx.beginPath();
+                    ctx.roundRect(p.x, p.y, p.w, 10, 5);
+                    ctx.fill();
+                });
+
+                // Draw Gummy Player
+                ctx.fillStyle = '#4de619';
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw Score
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.fillText(`Score: ${score}`, 10, 25);
+
+                // Game Over Check
+                if (player.y > canvas.height) {
+                    ctx.fillStyle = '#ef4444';
+                    ctx.font = 'bold 24px sans-serif';
+                    ctx.fillText('GAME OVER', 70, 200);
+                    return;
+                }
+
+                requestAnimationFrame(gameLoop);
+            }
+
+            canvas.onclick = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                player.vx = clickX < canvas.width / 2 ? -4 : 4;
+            };
+
+            gameLoop();
+        }
+    </script>
+</body>
+</html>
